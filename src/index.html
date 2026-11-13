@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Автозаполнение табелей</title>
+<style>
+  :root {
+    --bg: #f0f1f6;
+    --card: #ffffff;
+    --text: #1f2033;
+    --muted: #6b6e80;
+    --label: #8a8c99;
+    --border: #dcdde5;
+    --accent: #5b6cf0;
+    --accent-soft: #a9b3f6;
+    --green: #22a35a;
+    --green-soft: #a6dcbc;
+    --ok: #1e8e4f;
+    --warn: #b7791f;
+    --warn-bg: #fff8e6;
+    --err: #c53030;
+    --err-bg: #fdecec;
+    --info: #4a5bd4;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 28px 24px 60px; }
+  header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+  h1 { margin: 0; font-size: 34px; letter-spacing: -0.5px; }
+  .subtitle { color: var(--muted); margin: 10px 0 26px; font-size: 16px; }
+  .help-btn {
+    border: 2px solid #c9cff8; color: var(--accent); background: #fff; border-radius: 999px;
+    padding: 9px 20px; font-weight: 600; font-size: 15px; cursor: pointer; white-space: nowrap;
+  }
+  .help-btn:hover { background: #f5f6ff; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border-radius: 18px; padding: 26px 30px 30px; margin-bottom: 24px; box-shadow: 0 1px 2px rgba(20,20,40,.04); }
+  .grid2 .card { margin-bottom: 0; }
+  .grid2 { margin-bottom: 24px; }
+  .step { font-size: 13px; font-weight: 700; letter-spacing: 2.2px; text-transform: uppercase; color: var(--label); margin-bottom: 18px; }
+
+  .drop {
+    border: 2px dashed var(--border); border-radius: 14px; padding: 30px 18px; text-align: center;
+    cursor: pointer; transition: border-color .15s, background .15s; position: relative; min-height: 172px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+  .drop:hover, .drop.over { border-color: var(--accent-soft); background: #f8f9ff; }
+  .drop .icon { font-size: 44px; line-height: 1; margin-bottom: 14px; }
+  .drop .title { font-weight: 600; font-size: 17px; }
+  .drop .hint { color: var(--muted); margin-top: 4px; }
+  .drop.loaded { border-style: solid; border-color: var(--green-soft); background: #f4fbf7; }
+  .drop.bad { border-style: solid; border-color: #f0b4b4; background: var(--err-bg); }
+  .drop .fname { font-weight: 600; word-break: break-all; }
+  .drop .meta { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  .drop .remove {
+    position: absolute; top: 8px; right: 10px; border: none; background: transparent; color: var(--muted);
+    font-size: 20px; cursor: pointer; padding: 2px 6px; border-radius: 6px;
+  }
+  .drop .remove:hover { background: rgba(0,0,0,.06); color: var(--text); }
+  input[type=file] { display: none; }
+
+  .btn {
+    width: 100%; border: none; border-radius: 14px; padding: 18px; font-size: 18px; font-weight: 700;
+    color: #fff; cursor: pointer; transition: background .15s, transform .05s;
+  }
+  .btn:active:not(:disabled) { transform: translateY(1px); }
+  .btn.primary { background: var(--accent); }
+  .btn.primary:disabled { background: var(--accent-soft); cursor: not-allowed; }
+  .btn.green { background: var(--green); }
+  .btn.green:disabled { background: var(--green-soft); cursor: not-allowed; }
+
+  .console-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .console-head .step { margin: 0; }
+  .toggle { color: var(--muted); font-size: 14px; display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+  .console { border: 1px solid var(--border); border-radius: 12px; background: #fbfbfd; max-height: 640px; overflow: auto; }
+  .console .empty { color: var(--muted); padding: 22px; text-align: center; }
+  .section { border-bottom: 1px solid var(--border); }
+  .section:last-child { border-bottom: none; }
+  .section + .section { border-top: 8px solid var(--bg); }
+  .section > .sec-head {
+    position: sticky; top: 0; z-index: 2; background: #fff; padding: 12px 16px; display: flex; flex-wrap: wrap;
+    align-items: center; gap: 8px 12px; border-bottom: 1px solid #eceef3;
+  }
+  .sec-title { font-weight: 700; font-size: 16px; }
+  .sec-title.imp::before { content: "✈️ "; }
+  .sec-title.hol::before { content: "🌷 "; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { font-size: 12.5px; padding: 2px 9px; border-radius: 999px; background: #eef0f6; color: var(--muted); font-weight: 600; }
+  .chip.filled { background: #e3f5ea; color: var(--ok); }
+  .chip.warn { background: var(--warn-bg); color: var(--warn); }
+  .chip.err { background: var(--err-bg); color: var(--err); }
+  .dl-one { margin-left: auto; font-size: 13.5px; color: var(--green); font-weight: 600; cursor: pointer; border: none; background: none; }
+  .dl-one:hover { text-decoration: underline; }
+  details.tbl { padding: 2px 0; }
+  details.tbl > summary { cursor: pointer; padding: 8px 16px; font-weight: 600; color: #3b3d52; font-size: 14px; }
+  details.tbl > summary .cnt { color: var(--muted); font-weight: 500; }
+  .line {
+    font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; padding: 3px 16px 3px 34px;
+    position: relative; white-space: pre-wrap; word-break: break-word;
+  }
+  .line::before { position: absolute; left: 14px; }
+  .line.filled { color: #1d5f3a; } .line.filled::before { content: "✓"; color: var(--ok); }
+  .line.ok { color: var(--muted); } .line.ok::before { content: "="; }
+  .line.info { color: var(--info); } .line.info::before { content: "ℹ"; }
+  .line.warn { color: #7a5312; background: var(--warn-bg); } .line.warn::before { content: "!"; color: var(--warn); font-weight: 700; }
+  .line.error { color: #8f1f1f; background: var(--err-bg); } .line.error::before { content: "✕"; color: var(--err); }
+  .console.problems-only .line.filled, .console.problems-only .line.ok { display: none; }
+  .footer-note { color: var(--muted); font-size: 13px; text-align: center; margin-top: 10px; }
+
+  .modal-bg { position: fixed; inset: 0; background: rgba(20,22,40,.45); display: none; align-items: center; justify-content: center; padding: 20px; z-index: 10; }
+  .modal-bg.open { display: flex; }
+  .modal { background: #fff; border-radius: 18px; max-width: 720px; width: 100%; max-height: 86vh; overflow: auto; padding: 28px 32px; }
+  .modal h2 { margin-top: 0; }
+  .modal li { margin-bottom: 6px; }
+  .modal code { background: #f0f1f6; padding: 1px 5px; border-radius: 5px; }
+  .modal .close { float: right; border: none; background: none; font-size: 24px; cursor: pointer; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>📋 Автозаполнение табелей</h1>
+      <div class="subtitle">Загрузи табели и справочник «Клиенты и маркировки» — получи заполненные табели.</div>
+    </div>
+    <button class="help-btn" id="helpBtn">Как это работает?</button>
+  </header>
+
+  <div class="grid2">
+    <div class="card">
+      <div class="step">Шаг 1.1 — загрузи табель импорта</div>
+      <div class="drop" id="dropImport" data-icon="📋" data-hint="Формат: Табель №АМ и для склада.xlsx"></div>
+      <input type="file" id="fileImport" accept=".xlsx,.xlsm" />
+    </div>
+    <div class="card">
+      <div class="step">Шаг 1.2 — загрузи табель Голландии</div>
+      <div class="drop" id="dropHolland" data-icon="📋" data-hint="Формат: Табель №АМ г для склада.xlsx"></div>
+      <input type="file" id="fileHolland" accept=".xlsx,.xlsm" />
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="step">Шаг 2 — загрузи файл «Клиенты и маркировки»</div>
+    <div class="drop" id="dropRef" data-icon="📇" data-hint="Формат: Клиенты и маркировки - общий.xlsx"></div>
+    <input type="file" id="fileRef" accept=".xlsx,.xlsm" />
+  </div>
+
+  <div class="card">
+    <div class="step">Шаг 3 — заполни табели</div>
+    <button class="btn primary" id="runBtn" disabled>Заполнить табеля</button>
+  </div>
+
+  <div class="card">
+    <div class="console-head">
+      <div class="step">Консоль</div>
+      <label class="toggle"><input type="checkbox" id="problemsOnly" /> только проблемы</label>
+    </div>
+    <div class="console" id="console"><div class="empty">Здесь появится ход заполнения</div></div>
+  </div>
+
+  <div class="card">
+    <div class="step">Шаг 4 — скачай результат</div>
+    <button class="btn green" id="downloadBtn" disabled>Скачать заполненные табеля</button>
+    <div class="footer-note">Файлы обрабатываются прямо в браузере и никуда не отправляются.</div>
+  </div>
+</div>
+
+<div class="modal-bg" id="helpModal">
+  <div class="modal">
+    <button class="close" id="helpClose" aria-label="Закрыть">×</button>
+    <h2>Как это работает</h2>
+    <ol>
+      <li>Загрузи табель импорта и/или табель Голландии (можно один из них) и справочник «Клиенты и маркировки».</li>
+      <li><b>Импорт:</b> верхняя таблица не трогается, заполняются все нижние таблицы-разбивки. Справочник — лист <code>ИМПОРТ</code>.</li>
+      <li><b>Голландия:</b> заполняются обе таблицы (Холод и Тепло). Справочник — лист <code>ГОЛЛАНДИЯ</code>. Если столбец склада подписан как «AA», склад пишется в столбец сразу после «Комментарии».</li>
+      <li>Для каждой строки берётся маркировка и ищется в справочнике (без учёта регистра и пробелов). Найденные <b>№ клиента</b>, <b>Клиент</b> и <b>Склад</b> вписываются только в пустые ячейки — ничего уже вписанного не перезаписывается.</li>
+      <li>Если маркировка не нашлась целиком, а начинается с <code>b-</code>/<code>B </code>, <code>QW </code>/<code>QW.</code> или <code>FLT </code>, — приписка отбрасывается и поиск повторяется. «QWERTY» при этом не пострадает.</li>
+      <li>Если в строке уже стоит номер или имя клиента — они сверяются со справочником. При несовпадении строка не меняется, а в консоли появляется красная строка.</li>
+      <li>Ничего не вставляется (и выводится предупреждение), если маркировка есть у нескольких клиентов, если нашлось только похожее совпадение (часть ячейки с несколькими маркировками или запись с префиксом в справочнике), если у клиента в справочнике нет номера. Склад не вставляется, если в справочнике указано несколько складов.</li>
+      <li>Листы справочника с крупными клиентами (ДЖАЗ, МФ) пока не используются.</li>
+    </ol>
+  </div>
+</div>
+
+<script>/*BUNDLE*/</script>
+</body>
+</html>
