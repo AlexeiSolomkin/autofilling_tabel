@@ -111,7 +111,30 @@ function dataRows(sh: Sheet, h: HeaderInfo, nextHeaderRow: number): number[] {
   return rows;
 }
 
-const asNumberIfDigits = (s: string): string | number => (/^\d+$/.test(s) ? Number(s) : s);
+/** Склады, которых больше нет, и чем их заменять при вставке. */
+const WAREHOUSE_REPLACE: Record<string, string> = { можайск: "Химки" };
+
+/**
+ * Склад для вставки: если в справочнике указано несколько — берётся первый;
+ * упразднённые склады заменяются (Можайск → Химки).
+ */
+export function resolveWarehouse(raw: string): { value: string; notes: string[] } {
+  const notes: string[] = [];
+  let value = raw.trim();
+  if (isMultiWarehouse(value)) {
+    const first = value.split(/[,;\n/]|\sи\s/i).map((s) => s.trim()).find(Boolean) ?? value;
+    notes.push(`в справочнике несколько складов «${value.replace(/\s*\n\s*/g, ", ")}» — взят первый`);
+    value = first;
+  }
+  const repl = WAREHOUSE_REPLACE[value.toLowerCase()];
+  if (repl) {
+    notes.push(`${value} → ${repl}`);
+    value = repl;
+  }
+  return { value, notes };
+}
+
+const asNumberIfDigits =(s: string): string | number => (/^\d+$/.test(s) ? Number(s) : s);
 
 function describe(e: ClientEntry): string {
   return `№${e.number || "—"} «${e.name || "без имени"}»${e.warehouse ? `, ${e.warehouse}` : ""} (стр. ${e.row})`;
@@ -232,11 +255,11 @@ function processRow(ctx: RowCtx) {
           ? `склад не вставлен — в справочнике разные склады: ${res.whConflict.join(" / ")}`
           : "склад не вставлен — в справочнике он не указан",
       );
-    } else if (isMultiWarehouse(e.warehouse)) {
-      notes.push(`склад не вставлен — в справочнике указано несколько: «${e.warehouse.replace(/\s*\n\s*/g, ", ")}»`);
     } else {
-      sh.set(h.wh, r, e.warehouse, styleSource(sh, h, h.wh, r));
-      written.push(`склад «${e.warehouse}»`);
+      const { value, notes: whNotes } = resolveWarehouse(e.warehouse);
+      sh.set(h.wh, r, value, styleSource(sh, h, h.wh, r));
+      written.push(`склад «${value}»`);
+      notes.push(...whNotes);
     }
   }
 
