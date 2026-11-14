@@ -65,6 +65,44 @@ function richText(el: Element): string {
   return s;
 }
 
+/** Стандартная палитра Excel для индексированных цветов (самые частые). */
+const INDEXED: Record<number, string> = {
+  0: "000000", 1: "FFFFFF", 2: "FF0000", 3: "00FF00", 4: "0000FF", 5: "FFFF00", 6: "FF00FF", 7: "00FFFF",
+  8: "000000", 9: "FFFFFF", 10: "FF0000", 11: "00FF00", 12: "0000FF", 13: "FFFF00", 14: "FF00FF", 15: "00FFFF",
+  16: "800000", 17: "008000", 18: "000080", 19: "808000", 20: "800080", 21: "008080", 22: "C0C0C0", 23: "808080",
+  42: "CCFFCC", 43: "FFFF99", 50: "99CC00", 51: "FFCC00", 52: "FF9900", 53: "FF6600", 57: "339966",
+};
+
+function applyTint(hex: string, tint: number): string {
+  if (!tint) return hex;
+  const ch = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const out = ch.map((c) => Math.round(tint < 0 ? c * (1 + tint) : c + (255 - c) * tint));
+  return out.map((c) => Math.max(0, Math.min(255, c)).toString(16).padStart(2, "0")).join("").toUpperCase();
+}
+
+function resolveColor(el: Element, theme: string[]): string | null {
+  const rgb = el.getAttribute("rgb");
+  const tint = Number(el.getAttribute("tint") ?? 0);
+  if (rgb) return applyTint(rgb.slice(-6).toUpperCase(), tint);
+  const th = el.getAttribute("theme");
+  if (th !== null && theme[Number(th)]) return applyTint(theme[Number(th)], tint);
+  const idx = el.getAttribute("indexed");
+  if (idx !== null && INDEXED[Number(idx)]) return applyTint(INDEXED[Number(idx)], tint);
+  return null;
+}
+
+/** Похож ли цвет на красный / зелёный (для пометок складов в справочнике). */
+export function isRedColor(hex: string | null): boolean {
+  if (!hex) return false;
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  return r >= 180 && g <= 110 && b <= 110;
+}
+export function isGreenColor(hex: string | null): boolean {
+  if (!hex) return false;
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  return g >= 110 && g > r + 35 && g > b + 35;
+}
+
 function resolvePath(base: string, target: string): string {
   if (target.startsWith("/")) return target.slice(1);
   const parts = base.split("/").slice(0, -1);
@@ -141,6 +179,22 @@ export class Sheet {
   text(col: number, row: number): string {
     const v = this.getAt(col, row);
     return v === null ? "" : String(v);
+  }
+
+  /** Цвет заливки ячейки в виде "RRGGBB" (null — без заливки). */
+  fillColor(col: number, row: number): string | null {
+    const c = this.cells.get(mkAddr(col, row));
+    const s = c?.getAttribute("s");
+    return s ? this.wb.styleFill(Number(s)) : null;
+  }
+
+  /** Очистить значение ячейки, сохранив её стиль. */
+  clear(col: number, row: number): void {
+    const c = this.cells.get(mkAddr(col, row));
+    if (!c) return;
+    while (c.firstChild) c.removeChild(c.firstChild);
+    c.removeAttribute("t");
+    this.dirty = true;
   }
 
   /** Есть ли ячейка в XML (даже пустая, но со стилем). */
@@ -268,6 +322,8 @@ export class Workbook {
     }
 
     for (const rel of rels.values()) {
+      if (rel.type.endsWith("/styles")) this.stylesPath = rel.target;
+      if (rel.type.endsWith("/theme")) this.themePath = rel.target;
       if (rel.type.endsWith("/sharedStrings")) {
         this.sstPath = rel.target;
         this.sstDoc = this.readXml(rel.target);
@@ -286,6 +342,49 @@ export class Workbook {
       const rel = rid ? rels.get(rid) : undefined;
       if (rel) this.sheetOrder.push({ name: s.getAttribute("name") ?? "", path: rel.target });
     }
+  }
+
+  private stylesPath: string | null = null;
+  private themePath: string | null = null;
+  private xfFills: (string | null)[] | null = null;
+
+  /** Цвет заливки для стиля ячейки (индекс в cellXfs) → "RRGGBB" или null. */
+  styleFill(xfIndex: number): string | null {
+    if (!this.xfFills) this.xfFills = this.parseFills();
+    return this.xfFills[xfIndex] ?? null;
+  }
+
+  private parseFills(): (string | null)[] {
+    if (!this.stylesPath || !this.files[this.stylesPath]) return [];
+    const theme = this.parseTheme();
+    const doc = this.readXml(this.stylesPath);
+    const fillsEl = descendants(doc, "fills")[0];
+    const fills: (string | null)[] = fillsEl
+      ? elementChildren(fillsEl, "fill").map((f) => {
+          const p = firstChild(f, "patternFill");
+          if (!p || (p.getAttribute("patternType") ?? "none") === "none") return null;
+          const fg = firstChild(p, "fgColor");
+          return fg ? resolveColor(fg, theme) : null;
+        })
+      : [];
+    const xfsEl = descendants(doc, "cellXfs")[0];
+    if (!xfsEl) return [];
+    return elementChildren(xfsEl, "xf").map((xf) => fills[Number(xf.getAttribute("fillId") ?? 0)] ?? null);
+  }
+
+  /** Цвета темы в порядке индексов Excel: lt1, dk1, lt2, dk2, accent1..6, hlink, folHlink. */
+  private parseTheme(): string[] {
+    if (!this.themePath || !this.files[this.themePath]) return [];
+    const scheme = descendants(this.readXml(this.themePath), "clrScheme")[0];
+    if (!scheme) return [];
+    const byName = new Map<string, string>();
+    for (const el of elementChildren(scheme)) {
+      const v = elementChildren(el)[0];
+      if (!v) continue;
+      byName.set(el.localName, (v.getAttribute("lastClr") ?? v.getAttribute("val") ?? "000000").toUpperCase());
+    }
+    return ["lt1", "dk1", "lt2", "dk2", "accent1", "accent2", "accent3", "accent4", "accent5", "accent6", "hlink", "folHlink"]
+      .map((n) => byName.get(n) ?? "000000");
   }
 
   get sheetNames(): string[] {

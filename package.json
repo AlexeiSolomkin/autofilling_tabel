@@ -7,7 +7,8 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
-    "selftest": "node scripts/selftest.mjs"
+    "selftest": "node scripts/selftest.mjs",
+    "report": "node scripts/report.mjs"
   },
   "dependencies": {
     "fflate": "^0.8.3"

@@ -2,7 +2,7 @@
  * UI сервиса автозаполнения табелей.
  */
 import { Workbook, browserXmlEnv } from "./xlsx/workbook";
-import { buildReference, type Reference } from "./reference";
+import { buildReference, REF_TITLES, type Reference, type RefKind } from "./reference";
 import { fillTabel, type TabelKind, type TabelResult, type LogEntry } from "./tabel";
 
 const env = browserXmlEnv();
@@ -92,10 +92,11 @@ async function acceptFile(s: Slot, f: File) {
       const t0 = performance.now();
       reference = buildReference(new Workbook(s.file.bytes, env));
       const ms = Math.round(performance.now() - t0);
-      const parts: string[] = [];
-      if (reference.holland) parts.push(`Голландия: ${reference.holland.clients.length} клиентов, ${reference.holland.markingCount} маркировок`);
-      if (reference.import) parts.push(`Импорт: ${reference.import.clients.length} клиентов, ${reference.import.markingCount} маркировок`);
+      const parts = (["holland", "import", "jaaz", "mf"] as RefKind[])
+        .filter((k) => reference!.sheets[k])
+        .map((k) => `${REF_TITLES[k]}: ${reference!.sheets[k]!.markingCount} маркировок`);
       s.meta = `${parts.join(" · ")} · разобран за ${ms} мс`;
+      if (reference.errors.length) s.meta += ` · ⚠️ ${reference.errors.join("; ")}`;
     } catch (e) {
       reference = null;
       s.error = (e as Error).message;
@@ -176,6 +177,8 @@ function renderResults(errors: { kind: TabelKind; fileName: string; message: str
       el("span", "chip warn", `проверить: ${res.stats.warnings}`),
       el("span", "chip err", `не найдено: ${res.stats.notFound}`),
     );
+    if (res.stats.uncertain) chips.append(el("span", "chip warn", `неточно: ${res.stats.uncertain}`));
+    if (res.stats.defaulted) chips.append(el("span", "chip warn", `по умолчанию: ${res.stats.defaulted}`));
     head.append(chips);
     if (res.output) {
       const one = el("button", "dl-one", "⬇ скачать этот");

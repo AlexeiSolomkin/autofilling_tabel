@@ -14,8 +14,8 @@ const [refPath, ...jobs] = process.argv.slice(2);
 let t0 = performance.now();
 const ref = buildReference(new Workbook(readFileSync(refPath), env));
 console.log(`Справочник: ${(performance.now() - t0).toFixed(0)} мс;`,
-  `ГОЛЛАНДИЯ клиентов ${ref.holland?.clients.length}, маркировок ${ref.holland?.markingCount};`,
-  `ИМПОРТ клиентов ${ref.import?.clients.length}, маркировок ${ref.import?.markingCount}`);
+  Object.values(ref.sheets).map((ix) => `${ix!.sheetName}: ${ix!.clients.length} записей, ${ix!.markingCount} маркировок`).join("; "),
+  ref.errors.length ? `ошибки: ${ref.errors.join("; ")}` : "");
 
 for (const job of jobs) {
   const [kind, inp, out] = job.split("|") as [TabelKind, string, string];

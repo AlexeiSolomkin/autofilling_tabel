@@ -8,7 +8,7 @@ const HOMOGLYPHS: Record<string, string> = {
   р: "p", с: "c", т: "t", у: "y", х: "x", і: "i",
 };
 
-function prepare(s: string): string {
+export function prepare(s: string): string {
   return s
     .toLowerCase()
     .replace(/[‐-―−]/g, "-") // разные виды тире → дефис
@@ -113,4 +113,29 @@ export function normalizeHeader(s: string): string {
 /** Похоже ли значение склада на несколько складов сразу («Котельники, Можайск»). */
 export function isMultiWarehouse(s: string): boolean {
   return /[,;\n/]|\sи\s/i.test(s.trim());
+}
+
+/**
+ * Основа МФ-маркировки: без префикса «MF-»/«MF »/«MF_» и без знаков препинания.
+ * «MF-IP_JIRKOV» → «ipjirkov». Waibel в голландских табелях пишет первые 6 символов основы («IPJIRK»).
+ */
+export function mfStem(s: string): string {
+  return prepare(s)
+    .replace(/^(?:mf|мф)\s*[-_ .]\s*/, "")
+    .replace(/[^a-z0-9а-яё]/g, "");
+}
+
+export const MF_SHORT_LEN = 6;
+
+/** Начинается ли маркировка с MF-/MRJ (признак клиента МФ). */
+export function isMfMarking(s: string): boolean {
+  return /^(?:mf|мф)\s*[-_ .]|^mrj\d/.test(prepare(s));
+}
+
+/** Слова составной маркировки («ATS KULESH» → [ats, kulesh]); «PL» и короткие не учитываются. */
+export function markingTokens(s: string): string[] {
+  return prepare(s)
+    .split(/[\s,;/]+/)
+    .map((t) => t.replace(/[()]/g, ""))
+    .filter((t) => t.length >= 3 && t !== "flt" && t !== "pl");
 }
